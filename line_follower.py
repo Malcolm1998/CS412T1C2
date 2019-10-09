@@ -23,6 +23,7 @@ from nav_msgs.msg import Odometry
 
 
 global shutdown_requested
+global red_count
 
 
 class Stop(smach.State):
@@ -131,27 +132,31 @@ class FollowLine(smach.State):
                 # cv2.imshow("right window", right_red_mask)
                 # print(red_pixel_count)
                 #print(left_red_pixel_count - right_red_pixel_count)
-                if left_red_pixel_count - right_red_pixel_count > 1000:
-                    gh = 10 #------
-                    #print("Right red found")
-                    return 'stop'
 
-                if red_pixel_count > 2000:
-                    gh = 10  #------
-                    #print("Full red found")
-                    return 'stop'
+                RM = cv2.moments(bottom_red_mask)
+                if RM['m00'] > 0:
+                    ry = int(RM['m01'] / RM['m00'])
+                    print(" RedY: " + str(ry) + " Red Pixel: " + str(red_pixel_count))  # ----------
+
+                    if red_pixel_count > 3000 and ry > 430:
+                        print(red_pixel_count)
+                        print(ry)
+                        print("Full red found")
+                        return 'stop'
+
+                    if red_pixel_count > 1000 and ry > 430:
+                        print(red_pixel_count)
+                        print(ry)
+                        print("Right red found")
+                        return 'stop'
+
 
                 # If there is no significant red line, follow white line
-                M = cv2.moments(bottom_white_mask)
-                test = cv2.moments(bottom_red_mask)
+                WM = cv2.moments(bottom_white_mask)
 
-                if M['m00'] > 0:
-                    cx = int(M['m10'] / M['m00'])
-                    cy = int(M['m01'] / M['m00'])
-
-                    if test['m00'] > 0:
-                        s = int(test['m10'] / test['m00'])  # ----------
-                        print("WhiteX: " + str(cx) + " RedX: " + str(s))  # ----------
+                if WM['m00'] > 0:
+                    cx = int(WM['m10'] / WM['m00'])
+                    cy = int(WM['m01'] / WM['m00'])
 
                     # BEGIN CONTROL
                     if self.prev_error is None:
@@ -210,8 +215,11 @@ class Callbacks:
         #upper_white = numpy.array([360, 20, 255])
         #lower_white = numpy.array([0,  0,  240])
 
-        upper_white = numpy.array([360, 25, 255])
-        lower_white = numpy.array([0, 0, 200])
+        #upper_white = numpy.array([360, 25, 255])
+        #lower_white = numpy.array([0, 0, 200])
+
+        upper_white = numpy.array([360, 10, 255])
+        lower_white = numpy.array([0, 0, 230])
 
         upper_red_a = numpy.array([20, 255, 255])
         lower_red_a = numpy.array([0, 100, 100])
@@ -248,13 +256,15 @@ class Callbacks:
         #cv2.imshow("red window", self.red_mask)
         #cv2.imshow("left window", left_red_mask)
         #cv2.imshow("right window", right_red_mask)
-        cv2.imshow("right window", image)
+        #cv2.imshow("right window", image)
+
 
         # self.white_mask = white_mask
         # self.red_mask = red_mask
 
         # print(cv2.sumElems(red_mask)[0] / 255)
-        # cv2.imshow("white window", white_mask)
+        cv2.imshow("white window", bottom_white_mask)
+        cv2.imshow("red window", bottom_red_mask)
         # cv2.imshow("red window", red_mask)
         cv2.waitKey(3)
 
@@ -273,8 +283,8 @@ def main():
     rospy.init_node('line_follow_bot')
 
     callbacks = Callbacks()
-    rospy.Subscriber('camera/rgb/image_raw', Image, callbacks.image_callback)
-    #rospy.Subscriber('/camera/image_raw', Image, callbacks.image_callback)
+    #rospy.Subscriber('camera/rgb/image_raw', Image, callbacks.image_callback)
+    rospy.Subscriber('/camera/image_raw', Image, callbacks.image_callback)
     rospy.Subscriber("odom", Odometry, callbacks.odometry_callback)
 
     # Create done outcome which will stop the state machine

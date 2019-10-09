@@ -48,9 +48,15 @@ class Stop(smach.State):
         while math.sqrt((sp.x - ep.x) ** 2 + (sp.y - ep.y) ** 2) < 0.35:
             if shutdown_requested:
                 return 'done'
-            white_mask = self.callbacks.white_mask
+            h = self.callbacks.h
+            w = self.callbacks.w
+            search_top = 3 * h / 4
+            search_bot = h
+            bottom_white_mask = self.callbacks.white_mask.copy()
+            bottom_white_mask[0:search_top, 0:w] = 0
+            bottom_white_mask[search_bot:h, 0:w] = 0
 
-            M = cv2.moments(white_mask)
+            M = cv2.moments(bottom_white_mask)
             if M['m00'] > 0:
                 cx = int(M['m10'] / M['m00'])
                 cy = int(M['m01'] / M['m00'])
@@ -98,19 +104,55 @@ class FollowLine(smach.State):
         global shutdown_requested
         while not shutdown_requested:
             if self.callbacks.white_mask is not None and self.callbacks.red_mask is not None:
-                white_mask = self.callbacks.white_mask
-                red_mask = self.callbacks.red_mask
 
-                red_pixel_count = cv2.sumElems(red_mask)[0] / 255
-                white_pixel_count = cv2.sumElems(white_mask)[0] / 255
-                #print(red_pixel_count)
-                if red_pixel_count > 2000:
+                bottom_white_mask = self.callbacks.white_mask.copy()
+                bottom_red_mask = self.callbacks.red_mask.copy()
+
+                # Check if a long red strip has been detected
+                h = self.callbacks.h
+                w = self.callbacks.w
+                search_top = 3 * h / 4
+                search_bot = h
+                bottom_white_mask[0:search_top, 0:w] = 0
+                bottom_white_mask[search_bot:h, 0:w] = 0
+                bottom_red_mask[0:search_top, 0:w] = 0
+                bottom_red_mask[search_bot:h, 0:w] = 0
+                red_pixel_count = cv2.sumElems(bottom_red_mask)[0] / 255
+                white_pixel_count = cv2.sumElems(bottom_white_mask)[0] / 255
+
+                # Check if a half red strip, on the left, has been detected
+                left_red_mask = bottom_red_mask.copy()
+                right_red_mask = bottom_red_mask.copy()
+                left_red_mask[0:h, w / 2: w] = 0
+                right_red_mask[0:h, 0: w / 2] = 0
+                left_red_pixel_count = cv2.sumElems(left_red_mask)[0] / 255
+                right_red_pixel_count = cv2.sumElems(right_red_mask)[0] / 255
+                # cv2.imshow("left window", left_red_mask)
+                # cv2.imshow("right window", right_red_mask)
+                # print(red_pixel_count)
+                #print(left_red_pixel_count - right_red_pixel_count)
+                if left_red_pixel_count - right_red_pixel_count > 1000:
+                    gh = 10 #------
+                    #print("Right red found")
                     return 'stop'
 
-                M = cv2.moments(white_mask)
+                if red_pixel_count > 2000:
+                    gh = 10  #------
+                    #print("Full red found")
+                    return 'stop'
+
+                # If there is no significant red line, follow white line
+                M = cv2.moments(bottom_white_mask)
+                test = cv2.moments(bottom_red_mask)
+
                 if M['m00'] > 0:
                     cx = int(M['m10'] / M['m00'])
                     cy = int(M['m01'] / M['m00'])
+
+                    if test['m00'] > 0:
+                        s = int(test['m10'] / test['m00'])  # ----------
+                        print("WhiteX: " + str(cx) + " RedX: " + str(s))  # ----------
+
                     # BEGIN CONTROL
                     if self.prev_error is None:
                         error = cx - self.callbacks.w / 2
@@ -129,6 +171,9 @@ class FollowLine(smach.State):
 
 def request_shutdown(sig, frame):
     global shutdown_requested
+    event_one.shutdown_requested = True
+    event_two.shutdown_requested = True
+    event_three.shutdown_requested = True
     shutdown_requested = True
 
 
@@ -176,36 +221,60 @@ class Callbacks:
         lower_red_b = numpy.array([150, 100, 100])
         red_mask_b = cv2.inRange(hsv, lower_red_b, upper_red_b)
 
-        white_mask = cv2.inRange(hsv, lower_white, upper_white)
-        red_mask = cv2.bitwise_or(red_mask_a, red_mask_b)
-
         self.h, self.w, self.d = image.shape
-        search_top = 3*self.h/4
-        search_bot = self.h
-        white_mask[0:search_top, 0:self.w] = 0
-        white_mask[search_bot:self.h, 0:self.w] = 0
-        red_mask[0:3*self.h/4, 0:self.w] = 0
-        red_mask[search_bot:self.h, 0:self.w] = 0
+        self.white_mask = cv2.inRange(hsv, lower_white, upper_white)
+        self.red_mask = cv2.bitwise_or(red_mask_a, red_mask_b)
 
-        self.white_mask = white_mask
-        self.red_mask = red_mask
+        bottom_white_mask = self.white_mask
+        bottom_red_mask = self.red_mask.copy()
+        h = self.h
+        w = self.w
+        search_top = 3 * h / 4
+        search_bot = h
+        bottom_white_mask[0:search_top, 0:w] = 0
+        bottom_white_mask[search_bot:h, 0:w] = 0
+        bottom_red_mask[0:search_top, 0:w] = 0
+        bottom_red_mask[search_bot:h, 0:w] = 0
+        red_pixel_count = cv2.sumElems(bottom_red_mask)[0] / 255
+        white_pixel_count = cv2.sumElems(bottom_white_mask)[0] / 255
+
+        # Check if a half red strip, on the left, has been detected
+        left_red_mask = bottom_red_mask.copy()
+        right_red_mask = bottom_red_mask.copy()
+        left_red_mask[0:h, w / 2: w] = 0
+        right_red_mask[0:h, 0: w / 2] = 0
+        left_red_pixel_count = cv2.sumElems(left_red_mask)[0] / 255
+        right_red_pixel_count = cv2.sumElems(right_red_mask)[0] / 255
+        #cv2.imshow("red window", self.red_mask)
+        #cv2.imshow("left window", left_red_mask)
+        #cv2.imshow("right window", right_red_mask)
+        cv2.imshow("right window", image)
+
+        # self.white_mask = white_mask
+        # self.red_mask = red_mask
 
         # print(cv2.sumElems(red_mask)[0] / 255)
-        cv2.imshow("white window", white_mask)
-        cv2.imshow("red window", red_mask)
+        # cv2.imshow("white window", white_mask)
+        # cv2.imshow("red window", red_mask)
         cv2.waitKey(3)
 
 
 def main():
     global button_start
     global shutdown_requested
+
     button_start = False
+
     shutdown_requested = False
+    event_one.shutdown_requested = False
+    event_two.shutdown_requested = False
+    event_three.shutdown_requested = False
 
     rospy.init_node('line_follow_bot')
 
     callbacks = Callbacks()
     rospy.Subscriber('camera/rgb/image_raw', Image, callbacks.image_callback)
+    #rospy.Subscriber('/camera/image_raw', Image, callbacks.image_callback)
     rospy.Subscriber("odom", Odometry, callbacks.odometry_callback)
 
     # Create done outcome which will stop the state machine

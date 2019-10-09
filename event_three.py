@@ -10,6 +10,7 @@ import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
 
+global shutdown_requested
 
 class RotateLeft(smach.State):
 

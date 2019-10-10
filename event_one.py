@@ -10,6 +10,8 @@ import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
 
+import time
+
 global shutdown_requested
 
 class RotateLeft(smach.State):
@@ -24,7 +26,29 @@ class RotateLeft(smach.State):
         global button_start
         global shutdown_requested
         while not shutdown_requested:
-            print("Rotate left")
+
+            target_heading = (self.callbacks.heading + 90) % 360
+
+            turning = True
+            previous_difference = None
+            while turning:
+                difference = minimum_angle_between_headings(target_heading, self.callbacks.heading)
+
+                if previous_difference is None:
+                    self.twist.angular.z = 0.4
+                    self.cmd_vel_pub.publish(self.twist)
+                else:
+                    if difference < 0.5:
+                        turning = False
+                        self.twist.angular.z = 0
+                        self.cmd_vel_pub.publish(self.twist)
+                    else:
+                        self.twist.angular.z = 0.4
+                        self.cmd_vel_pub.publish(self.twist)
+
+                if previous_difference != difference:
+                    previous_difference = difference
+            return 'count'
         return 'done1'
 
 
@@ -40,7 +64,8 @@ class Count(smach.State):
         global button_start
         global shutdown_requested
         while not shutdown_requested:
-            print("count")
+            time.sleep(5)
+            return 'rotate_right'
         return 'done1'
 
 
@@ -56,8 +81,43 @@ class RotateRight(smach.State):
         global button_start
         global shutdown_requested
         while not shutdown_requested:
-            print("Rotate right")
+
+            target_heading = self.callbacks.heading - 90
+            if target_heading < 0:
+                target_heading = target_heading + 360
+
+            turning = True
+            previous_difference = None
+            while turning:
+                difference = minimum_angle_between_headings(target_heading, self.callbacks.heading)
+
+                if previous_difference is None:
+                    self.twist.angular.z = -0.4
+                    self.cmd_vel_pub.publish(self.twist)
+                else:
+                    if difference < 0.5:
+                        turning = False
+                        self.twist.angular.z = 0
+                        self.cmd_vel_pub.publish(self.twist)
+                    else:
+                        self.twist.angular.z = -0.4
+                        self.cmd_vel_pub.publish(self.twist)
+
+                if previous_difference != difference:
+                    previous_difference = difference
+            return 'success1'
         return 'done1'
+
+
+def minimum_angle_between_headings(a, b):
+    heading_difference = a - b
+    if heading_difference < 0:
+        heading_difference += 360
+    if heading_difference > 180:
+        heading_difference = b - a
+        if heading_difference < 0:
+            heading_difference += 360
+    return heading_difference
 
 
 def get_state_machine(callbacks):

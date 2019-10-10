@@ -60,6 +60,17 @@ class RotateRight(smach.State):
         return 'done3'
 
 
+def minimum_angle_between_headings(a, b):
+    heading_difference = a - b
+    if heading_difference < 0:
+        heading_difference += 360
+    if heading_difference > 180:
+        heading_difference = b - a
+        if heading_difference < 0:
+            heading_difference += 360
+    return heading_difference
+
+
 def get_state_machine(callbacks):
     sm_event_3 = smach.StateMachine(outcomes=['DONE3', 'SUCCESS3'])
     with sm_event_3:

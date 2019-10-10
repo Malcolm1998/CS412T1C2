@@ -11,6 +11,7 @@ from sensor_msgs.msg import Image
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
+from tf.transformations import euler_from_quaternion
 
 import cv2
 import cv_bridge
@@ -41,12 +42,24 @@ class Stop(smach.State):
     def execute(self, userdata):
         global button_start
         global shutdown_requested
-        start = time.time()
+        global red_count
+
+        red_count += 1
+
+        red_events = [1, 3, 5]
+        red_stops = [0, 2, 4]
+        if red_count in red_stops:
+            distance = 0.1
+        else:
+            distance = 0.35
+
         while self.callbacks.pose is None:
             time.sleep(1)
+
         sp = self.callbacks.pose
         ep = sp
-        while math.sqrt((sp.x - ep.x) ** 2 + (sp.y - ep.y) ** 2) < 0.35:
+
+        while math.sqrt((sp.x - ep.x) ** 2 + (sp.y - ep.y) ** 2) < distance:
             if shutdown_requested:
                 return 'done'
             h = self.callbacks.h
@@ -77,7 +90,16 @@ class Stop(smach.State):
                 ep = self.callbacks.pose
 
         self.twist.linear.x = 0
+        self.twist.angular.z = 0
         self.cmd_vel_pub.publish(self.twist)
+
+        if red_count in red_events:
+            if red_count == 1:
+                return 'event_one'
+            elif red_count == 3:
+                return 'event_two'
+            elif red_count == 5:
+                return 'event_three'
 
         start = time.time()
         while time.time() - start < 5:
@@ -138,11 +160,11 @@ class FollowLine(smach.State):
                     ry = int(RM['m01'] / RM['m00'])
                     print(" RedY: " + str(ry) + " Red Pixel: " + str(red_pixel_count))  # ----------
 
-                    if red_pixel_count > 3000 and ry > 430:
-                        print(red_pixel_count)
-                        print(ry)
-                        print("Full red found")
-                        return 'stop'
+                    #if red_pixel_count > 3000 and ry > 430:
+                    #    print(red_pixel_count)
+                    #    print(ry)
+                    #    print("Full red found")
+                    #    return 'stop'
 
                     if red_pixel_count > 1000 and ry > 430:
                         print(red_pixel_count)
@@ -205,8 +227,17 @@ class Callbacks:
 
         self.pose = None
 
+        self.heading = None
+
     def odometry_callback(self, msg):
         self.pose = msg.pose.pose.position
+        yaw = euler_from_quaternion([
+            msg.pose.pose.orientation.x,
+            msg.pose.pose.orientation.y,
+            msg.pose.pose.orientation.z,
+            msg.pose.pose.orientation.w
+        ])[2]
+        self.heading = (yaw + math.pi) * (180 / math.pi)
         return
 
     def image_callback(self, msg):
@@ -218,7 +249,7 @@ class Callbacks:
         #upper_white = numpy.array([360, 25, 255])
         #lower_white = numpy.array([0, 0, 200])
 
-        upper_white = numpy.array([360, 10, 255])
+        upper_white = numpy.array([360, 30, 255])
         lower_white = numpy.array([0, 0, 230])
 
         upper_red_a = numpy.array([20, 255, 255])
@@ -272,6 +303,9 @@ class Callbacks:
 def main():
     global button_start
     global shutdown_requested
+    global red_count
+
+    red_count = 0
 
     button_start = False
 

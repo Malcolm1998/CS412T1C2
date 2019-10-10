@@ -33,7 +33,9 @@ class RotateLeft(smach.State):
 
             turning = True
             previous_difference = None
-            while turning and not shutdown_requested:
+            while turning:
+                if shutdown_requested:
+                    return 'done2'
                 difference = minimum_angle_between_headings(target_heading, self.callbacks.heading)
 
                 if previous_difference is None:
@@ -50,9 +52,6 @@ class RotateLeft(smach.State):
 
                 if previous_difference != difference:
                     previous_difference = difference
-
-            if shutdown_requested:
-                return 'done2'
 
             if checked:
                 return 'success2'
@@ -102,7 +101,6 @@ class Follow(smach.State):
                 RM = cv2.moments(bottom_red_mask)
                 if RM['m00'] > 0:
                     ry = int(RM['m01'] / RM['m00'])
-                    print(" RedY: " + str(ry) + " Red Pixel: " + str(red_pixel_count))  # ----------
 
                     if red_pixel_count > 1000 and ry > 430:
                         print(red_pixel_count)

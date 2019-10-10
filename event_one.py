@@ -23,7 +23,6 @@ class RotateLeft(smach.State):
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
 
     def execute(self, userdata):
-        global button_start
         global shutdown_requested
         while not shutdown_requested:
 
@@ -32,6 +31,8 @@ class RotateLeft(smach.State):
             turning = True
             previous_difference = None
             while turning:
+                if shutdown_requested:
+                    return 'done1'
                 difference = minimum_angle_between_headings(target_heading, self.callbacks.heading)
 
                 if previous_difference is None:
@@ -61,7 +62,6 @@ class Count(smach.State):
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
 
     def execute(self, userdata):
-        global button_start
         global shutdown_requested
         while not shutdown_requested:
             time.sleep(5)
@@ -78,7 +78,6 @@ class RotateRight(smach.State):
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
 
     def execute(self, userdata):
-        global button_start
         global shutdown_requested
         while not shutdown_requested:
 
@@ -89,6 +88,8 @@ class RotateRight(smach.State):
             turning = True
             previous_difference = None
             while turning:
+                if shutdown_requested:
+                    return 'done1'
                 difference = minimum_angle_between_headings(target_heading, self.callbacks.heading)
 
                 if previous_difference is None:

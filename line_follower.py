@@ -44,10 +44,10 @@ class Stop(smach.State):
         global shutdown_requested
         global red_count
 
-        red_count += 1
+        red_count = (red_count + 1) % 6
 
-        red_events = [1, 3, 5]
-        red_stops = [0, 2, 4]
+        red_events = [1, 3]
+        red_stops = [0, 2, 4, 5]
         if red_count in red_stops:
             distance = 0.1
         else:
@@ -98,13 +98,14 @@ class Stop(smach.State):
                 return 'event_one'
             elif red_count == 3:
                 return 'event_two'
-            elif red_count == 5:
-                return 'event_three'
 
         start = time.time()
         while time.time() - start < 5:
             if shutdown_requested:
                 return 'done'
+
+        if red_count == 5:
+            return 'event_three'
 
         return 'follow_line'
 
@@ -158,7 +159,7 @@ class FollowLine(smach.State):
                 RM = cv2.moments(bottom_red_mask)
                 if RM['m00'] > 0:
                     ry = int(RM['m01'] / RM['m00'])
-                    print(" RedY: " + str(ry) + " Red Pixel: " + str(red_pixel_count))  # ----------
+                    # print(" RedY: " + str(ry) + " Red Pixel: " + str(red_pixel_count))  # ----------
 
                     #if red_pixel_count > 3000 and ry > 430:
                     #    print(red_pixel_count)
@@ -305,7 +306,8 @@ def main():
     global shutdown_requested
     global red_count
 
-    red_count = 0
+    # red_count = 0
+    red_count = 4
 
     button_start = False
 

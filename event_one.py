@@ -9,6 +9,8 @@ from sensor_msgs.msg import Image
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
+import detect_shape
+from kobuki_msgs.msg import Sound
 
 import time
 
@@ -39,7 +41,7 @@ class RotateLeft(smach.State):
                     self.twist.angular.z = 0.4
                     self.cmd_vel_pub.publish(self.twist)
                 else:
-                    if difference < 0.5:
+                    if difference < 1:
                         turning = False
                         self.twist.angular.z = 0
                         self.cmd_vel_pub.publish(self.twist)
@@ -60,11 +62,21 @@ class Count(smach.State):
         self.callbacks = callbacks
         self.twist = Twist()
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
+        self.sound_pub = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
 
     def execute(self, userdata):
         global shutdown_requested
         while not shutdown_requested:
-            time.sleep(5)
+            symbol_red_mask = self.callbacks.symbol_red_mask.copy()
+            symbol_red_mask[0:self.callbacks.h / 4, 0:self.callbacks.w] = 0
+            count = 0
+            for i in range(10):
+                count += detect_shape.count_objects(symbol_red_mask)
+            real_count = math.ceil(count/10)
+            print(real_count)
+            for i in range(int(real_count)):
+                self.sound_pub.publish(1)
+                time.sleep(1)
             return 'rotate_right'
         return 'done1'
 
@@ -96,7 +108,7 @@ class RotateRight(smach.State):
                     self.twist.angular.z = -0.4
                     self.cmd_vel_pub.publish(self.twist)
                 else:
-                    if difference < 0.5:
+                    if difference < 1:
                         turning = False
                         self.twist.angular.z = 0
                         self.cmd_vel_pub.publish(self.twist)

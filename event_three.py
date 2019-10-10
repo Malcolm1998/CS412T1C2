@@ -11,6 +11,9 @@ from sensor_msgs.msg import Image
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
+from kobuki_msgs.msg import Sound
+import detect_shape
+import event_two
 
 global shutdown_requested
 global number_of_checks
@@ -129,13 +132,24 @@ class Check(smach.State):
         self.callbacks = callbacks
         self.twist = Twist()
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
+        self.sound_pub = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
 
     def execute(self, userdata):
         global shutdown_requested
         global number_of_checks
         while not shutdown_requested:
             number_of_checks += 1
-            print(number_of_checks)
+            h = self.callbacks.h
+            w = self.callbacks.w
+            symbol_red_mask = self.callbacks.symbol_red_mask.copy()
+            symbol_red_mask[0:h / 2, 0:w] = 0
+            shapes = detect_shape.detect_shape(symbol_red_mask)[0]
+            if len(shapes) > 0:
+                current_shape = shapes[0]
+                print(current_shape)
+                if current_shape.value == event_two.previous_shape:
+                    self.sound_pub.publish(1)
+
             time.sleep(1)
             return "rotate_right"
         return 'done3'

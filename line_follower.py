@@ -20,7 +20,10 @@ import time
 import event_one
 import event_two
 import event_three
+import detect_shape
 from nav_msgs.msg import Odometry
+
+from kobuki_msgs.msg import Sound
 
 
 global shutdown_requested
@@ -95,8 +98,10 @@ class Stop(smach.State):
 
         if red_count in red_events:
             if red_count == 1:
+                #return 'follow_line'
                 return 'event_one'
             elif red_count == 3:
+                #return 'follow_line'
                 return 'event_two'
 
         start = time.time()
@@ -105,6 +110,7 @@ class Stop(smach.State):
                 return 'done'
 
         if red_count == 5:
+            #return 'follow_line'
             return 'event_three'
 
         return 'follow_line'
@@ -221,6 +227,8 @@ class Callbacks:
 
         self.red_mask = None
         self.white_mask = None
+        self.symbol_red_mask = None
+        self.symbol_green_mask = None
 
         self.h = None
         self.w = None
@@ -230,8 +238,11 @@ class Callbacks:
 
         self.heading = None
 
+        self.sound_pub = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
+
     def odometry_callback(self, msg):
         self.pose = msg.pose.pose.position
+        #print(self.pose)
         yaw = euler_from_quaternion([
             msg.pose.pose.orientation.x,
             msg.pose.pose.orientation.y,
@@ -250,8 +261,11 @@ class Callbacks:
         #upper_white = numpy.array([360, 25, 255])
         #lower_white = numpy.array([0, 0, 200])
 
+        self.h, self.w, self.d = image.shape
+
         upper_white = numpy.array([360, 30, 255])
         lower_white = numpy.array([0, 0, 230])
+        self.white_mask = cv2.inRange(hsv, lower_white, upper_white)
 
         upper_red_a = numpy.array([20, 255, 255])
         lower_red_a = numpy.array([0, 100, 100])
@@ -260,12 +274,23 @@ class Callbacks:
         upper_red_b = numpy.array([255, 255, 255])
         lower_red_b = numpy.array([150, 100, 100])
         red_mask_b = cv2.inRange(hsv, lower_red_b, upper_red_b)
-
-        self.h, self.w, self.d = image.shape
-        self.white_mask = cv2.inRange(hsv, lower_white, upper_white)
         self.red_mask = cv2.bitwise_or(red_mask_a, red_mask_b)
 
-        bottom_white_mask = self.white_mask
+        upper_red_a = numpy.array([20, 255, 255])
+        lower_red_a = numpy.array([0, 200, 60])
+        red_mask_a = cv2.inRange(hsv, lower_red_a, upper_red_a)
+
+        upper_red_b = numpy.array([255, 255, 255])
+        lower_red_b = numpy.array([150, 200, 60])
+        red_mask_b = cv2.inRange(hsv, lower_red_b, upper_red_b)
+
+        self.symbol_red_mask = cv2.bitwise_or(red_mask_a, red_mask_b)
+
+        upper_green = numpy.array([136, 255, 255])
+        lower_green = numpy.array([56, 43, 90])
+        self.symbol_green_mask = cv2.inRange(hsv, lower_green, upper_green)
+
+        bottom_white_mask = self.white_mask.copy()
         bottom_red_mask = self.red_mask.copy()
         h = self.h
         w = self.w
@@ -278,26 +303,28 @@ class Callbacks:
         red_pixel_count = cv2.sumElems(bottom_red_mask)[0] / 255
         white_pixel_count = cv2.sumElems(bottom_white_mask)[0] / 255
 
-        # Check if a half red strip, on the left, has been detected
-        left_red_mask = bottom_red_mask.copy()
-        right_red_mask = bottom_red_mask.copy()
-        left_red_mask[0:h, w / 2: w] = 0
-        right_red_mask[0:h, 0: w / 2] = 0
-        left_red_pixel_count = cv2.sumElems(left_red_mask)[0] / 255
-        right_red_pixel_count = cv2.sumElems(right_red_mask)[0] / 255
-        #cv2.imshow("red window", self.red_mask)
-        #cv2.imshow("left window", left_red_mask)
-        #cv2.imshow("right window", right_red_mask)
-        #cv2.imshow("right window", image)
-
-
         # self.white_mask = white_mask
         # self.red_mask = red_mask
 
+        symbol_red_mask = self.symbol_red_mask.copy()
+        symbol_red_mask[0:h/4, 0:w] = 0
+        symbol_red_mask[3*h/4:h, 0:w] = 0
+
+        symbol_green_mask = self.symbol_green_mask.copy()
+        #symbol_green_mask[0:h / 4, 0:w] = 0
+        #symbol_green_mask[0:h, 0:w / 4] = 0
+        #symbol_green_mask[0:h, 3 * w / 4:w] = 0
+        #symbol_green_mask[3 * h / 4:h, 0:w] = 0
+
+        symbol_green_mask[0:h / 4, 0:w] = 0
+        symbol_green_mask[3 * h / 4:h, 0:w] = 0
+
+        shapes = detect_shape.detect_shape(symbol_green_mask)[0]
+        #print(shapes)
+
         # print(cv2.sumElems(red_mask)[0] / 255)
-        cv2.imshow("white window", bottom_white_mask)
-        cv2.imshow("red window", bottom_red_mask)
-        # cv2.imshow("red window", red_mask)
+        cv2.imshow("green window", symbol_green_mask)
+        cv2.imshow("white window", self.white_mask)
         cv2.waitKey(3)
 
 
@@ -306,8 +333,11 @@ def main():
     global shutdown_requested
     global red_count
 
-    # red_count = 0
-    red_count = 4
+    event_two.previous_shape = 4
+
+    #red_count = 0
+    red_count = 2
+    # red_count = 4
 
     button_start = False
 

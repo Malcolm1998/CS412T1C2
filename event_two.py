@@ -11,9 +11,12 @@ from sensor_msgs.msg import Image
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import Joy
+import detect_shape
+from kobuki_msgs.msg import Sound
 
 global shutdown_requested
 global checked
+global previous_shape
 
 
 class RotateLeft(smach.State):
@@ -66,9 +69,9 @@ class Follow(smach.State):
         smach.State.__init__(self, outcomes=['done2', 'stop'])
         self.callbacks = callbacks
         self.prev_error = None
-        self.Kp = 1.0 / 25.0
-        self.Ki = 1.0 / 25.0
-        self.Kd = 1.0 / 25.0
+        self.Kp = 1.0 / 50.0
+        self.Ki = 1.0 / 50.0
+        self.Kd = 1.0 / 50.0
         self.speed = 0.8
         self.twist = Twist()
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
@@ -102,7 +105,7 @@ class Follow(smach.State):
                 if RM['m00'] > 0:
                     ry = int(RM['m01'] / RM['m00'])
 
-                    if red_pixel_count > 1000 and ry > 430:
+                    if red_pixel_count > 500 and ry > 430:
                         print(red_pixel_count)
                         print(ry)
                         print("red found")
@@ -149,7 +152,7 @@ class Stop(smach.State):
         global checked
 
         if not checked:
-            distance = 0
+            distance = 0.0001
         else:
             distance = 0.35
 
@@ -159,7 +162,10 @@ class Stop(smach.State):
         sp = self.callbacks.pose
         ep = sp
 
+        start = time.time()
+
         while math.sqrt((sp.x - ep.x) ** 2 + (sp.y - ep.y) ** 2) < distance:
+            #print(str(math.sqrt((sp.x - ep.x) ** 2 + (sp.y - ep.y) ** 2)) + " "+str(distance))
             if shutdown_requested:
                 return 'done2'
             h = self.callbacks.h
@@ -183,11 +189,18 @@ class Stop(smach.State):
                     error = cx - self.callbacks.w / 2
                     rotation = -(self.Kp * float(error) + self.Kd * (error - self.prev_error))
                     self.prev_error = error
+                print(self.speed)
                 self.twist.linear.x = self.speed
                 self.twist.angular.z = rotation
                 self.cmd_vel_pub.publish(self.twist)
                 # END CONTROL
                 ep = self.callbacks.pose
+            else:
+                self.twist.linear.x = 2.0
+                self.cmd_vel_pub.publish(self.twist)
+                if time.time() - start > 0.7:
+                    print("break")
+                    break
 
         self.twist.linear.x = 0
         self.twist.angular.z = 0
@@ -206,14 +219,61 @@ class Check(smach.State):
         self.callbacks = callbacks
         self.twist = Twist()
         self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop', Twist, queue_size=1)
+        self.sound_pub = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
 
     def execute(self, userdata):
         global shutdown_requested
         global checked
+        global previous_shape
         while not shutdown_requested:
-            time.sleep(5)
+            symbol_red_mask = self.callbacks.symbol_red_mask.copy()
+            symbol_green_mask = self.callbacks.symbol_green_mask.copy()
+            h = self.callbacks.h
+            w = self.callbacks.w
+            symbol_red_mask[0:h / 4, 0:w] = 0
+            symbol_red_mask[3 * h / 4:h, 0:w] = 0
+            symbol_green_mask[0:h / 4, 0:w] = 0
+            symbol_green_mask[3 * h / 4:h, 0:w] = 0
+
+            count = 0
+            real_count = 0
+            for i in range(10):
+                count += detect_shape.count_objects(symbol_red_mask)
+            real_count += math.ceil(count / 10)
+
+            count = 0
+            for i in range(10):
+                count += detect_shape.count_objects(symbol_green_mask)
+            real_count += math.ceil(count / 10)
+
+            print(real_count)
+            for i in range(int(real_count)):
+                self.sound_pub.publish(1)
+                time.sleep(1)
             checked = True
+
+            symbol_green_mask = self.callbacks.symbol_green_mask.copy()
+            symbol_green_mask[0:h / 4, 0:w] = 0
+            symbol_green_mask[3 * h / 4:h, 0:w] = 0
+
+            shapes = detect_shape.detect_shape(symbol_green_mask)[0]
+            if len(shapes) > 0:
+                previous_shape = shapes[0].value
+                print(previous_shape)
             return 'rotate_180'
+            '''
+            while True:
+                shapes = detect_shape.detect_shape(symbol_green_mask)[0]
+                if len(shapes) <= 0:
+                    continue
+                print(shapes)
+                for shape in shapes:
+                    previous_shape = shape
+                    if previous_shape.value != -1:
+                        break
+            print(previous_shape)
+            return 'rotate_180'
+            '''
         return 'done1'
 
 

@@ -150,6 +150,10 @@ class Check(smach.State):
                 if current_shape.value == event_two.previous_shape:
                     self.sound_pub.publish(1)
 
+                if current_shape.value == 3:
+                    if event_two.previous_shape in [-1, 5]:
+                        self.sound_pub.publish(1)
+
             time.sleep(1)
             return "rotate_right"
         return 'done3'
